@@ -185,7 +185,7 @@
     }
 
     /* Modals & Login Overlay */
-    #auth-screen, #confirm-modal {
+    #auth-screen, #confirm-modal, #delete-confirm-modal {
       position: fixed;
       top: 0;
       left: 0;
@@ -199,7 +199,7 @@
       z-index: 1000;
     }
 
-    #confirm-modal {
+    #confirm-modal, #delete-confirm-modal {
       z-index: 1001;
       background: rgba(6, 9, 15, 0.85);
       backdrop-filter: blur(15px);
@@ -435,7 +435,7 @@
     </div>
   </div>
 
-  <!-- Custom Confirmation Modal (Exit Card) -->
+  <!-- Custom Exit Confirmation Modal -->
   <div id="confirm-modal" style="display: none;">
     <div class="auth-card" style="max-width: 420px; padding: 2.5rem;">
       <div class="auth-icon" style="font-size: 2.5rem; margin-bottom: 1rem;">⚠️</div>
@@ -446,6 +446,21 @@
       <div style="display: flex; gap: 1rem;">
         <button id="confirm-yes-btn" class="btn btn-danger" style="flex: 1;">Yes, Exit</button>
         <button id="confirm-no-btn" class="btn btn-secondary" style="flex: 1;">Batal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Delete Confirmation Modal -->
+  <div id="delete-confirm-modal" style="display: none;">
+    <div class="auth-card" style="max-width: 420px; padding: 2.5rem;">
+      <div class="auth-icon" style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--danger);">🗑️</div>
+      <h2 style="font-size: 1.5rem; margin-bottom: 0.5rem; font-weight: 700;">Hapus Catatan</h2>
+      <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 2rem; line-height: 1.5;">
+        Apakah Anda yakin ingin menghapus catatan keamanan ini secara permanen dari database cloud?
+      </p>
+      <div style="display: flex; gap: 1rem;">
+        <button id="delete-confirm-yes-btn" class="btn btn-danger" style="flex: 1;">Ya, Hapus</button>
+        <button id="delete-confirm-no-btn" class="btn btn-secondary" style="flex: 1;">Batal</button>
       </div>
     </div>
   </div>
@@ -470,7 +485,7 @@
       <!-- Kolom Kiri: Daftar Catatan -->
       <div class="panel">
         <div>
-          <div class="panel-title">📁 Catatan Terenkripsi (In-Memory Database)</div>
+          <div class="panel-title">📁 Catatan Terenkripsi (In-Memory / PostgreSQL)</div>
           <div id="notes-container" class="notes-list" style="margin-top: 1.5rem;">
             <div style="text-align: center; color: var(--text-muted); padding: 3rem 0;">Memuat catatan...</div>
           </div>
@@ -579,6 +594,7 @@
   <script>
     let activePin = sessionStorage.getItem('secure_pin') || '';
     let currentView = 'notes';
+    let targetDeleteId = null;
 
     // Deteksi SSL/HTTPS
     if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
@@ -629,17 +645,15 @@
       }
     });
 
-    // Custom Confirmation Modal (Exit Card) logic
+    // Custom Confirmation Exit Modal logic
     function openExitModal() {
       document.getElementById('confirm-modal').style.display = 'flex';
     }
 
-    // Close Modal
     function closeExitModal() {
       document.getElementById('confirm-modal').style.display = 'none';
     }
 
-    // Yes, Exit Action
     document.getElementById('confirm-yes-btn').addEventListener('click', () => {
       activePin = '';
       sessionStorage.removeItem('secure_pin');
@@ -648,8 +662,40 @@
       checkAuth();
     });
 
-    // Cancel Exit Action
     document.getElementById('confirm-no-btn').addEventListener('click', closeExitModal);
+
+    // Custom Delete Confirmation Modal logic
+    function openDeleteModal(id) {
+      targetDeleteId = id;
+      document.getElementById('delete-confirm-modal').style.display = 'flex';
+    }
+
+    function closeDeleteModal() {
+      targetDeleteId = null;
+      document.getElementById('delete-confirm-modal').style.display = 'none';
+    }
+
+    document.getElementById('delete-confirm-yes-btn').addEventListener('click', async () => {
+      if (!targetDeleteId) return;
+      try {
+        const res = await fetch(`/api/notes/${targetDeleteId}`, {
+          method: 'DELETE',
+          headers: { 'x-admin-pin': activePin }
+        });
+        const json = await res.json();
+        closeDeleteModal();
+        if (json.success) {
+          loadNotes();
+        } else {
+          alert('Gagal menghapus: ' + json.error);
+        }
+      } catch (err) {
+        closeDeleteModal();
+        alert('Eror koneksi saat menghapus.');
+      }
+    });
+
+    document.getElementById('delete-confirm-no-btn').addEventListener('click', closeDeleteModal);
 
     // Navigasi View
     function switchView(viewName) {
@@ -737,7 +783,7 @@
           document.querySelectorAll('.btn-delete-note').forEach(btn => {
             btn.addEventListener('click', (e) => {
               const id = e.target.getAttribute('data-id');
-              deleteNote(id);
+              openDeleteModal(id);
             });
           });
 
@@ -785,25 +831,6 @@
         alert('Gagal memproses catatan.');
       }
     });
-
-    // Delete Note
-    async function deleteNote(id) {
-      if (!confirm('Apakah Anda yakin ingin menghapus catatan keamanan ini?')) return;
-      try {
-        const res = await fetch(`/api/notes/${id}`, {
-          method: 'DELETE',
-          headers: { 'x-admin-pin': activePin }
-        });
-        const json = await res.json();
-        if (json.success) {
-          loadNotes();
-        } else {
-          alert('Gagal menghapus: ' + json.error);
-        }
-      } catch (err) {
-        alert('Eror koneksi saat menghapus.');
-      }
-    }
 
     // Prosedur Edit (Single Page Application Workflow)
     function enableEditMode(id, title, content) {
