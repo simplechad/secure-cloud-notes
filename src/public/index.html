@@ -664,7 +664,7 @@
 
     document.getElementById('confirm-no-btn').addEventListener('click', closeExitModal);
 
-    // Custom Delete Confirmation Modal logic
+    // Custom Delete Confirmation Modal logic (Tanpa native confirm())
     function openDeleteModal(id) {
       targetDeleteId = id;
       document.getElementById('delete-confirm-modal').style.display = 'flex';
@@ -677,22 +677,8 @@
 
     document.getElementById('delete-confirm-yes-btn').addEventListener('click', async () => {
       if (!targetDeleteId) return;
-      try {
-        const res = await fetch(`/api/notes/${targetDeleteId}`, {
-          method: 'DELETE',
-          headers: { 'x-admin-pin': activePin }
-        });
-        const json = await res.json();
-        closeDeleteModal();
-        if (json.success) {
-          loadNotes();
-        } else {
-          alert('Gagal menghapus: ' + json.error);
-        }
-      } catch (err) {
-        closeDeleteModal();
-        alert('Eror koneksi saat menghapus.');
-      }
+      await deleteNote(targetDeleteId);
+      closeDeleteModal();
     });
 
     document.getElementById('delete-confirm-no-btn').addEventListener('click', closeDeleteModal);
@@ -773,16 +759,18 @@
           // Bind dynamic event listeners
           document.querySelectorAll('.btn-edit-note').forEach(btn => {
             btn.addEventListener('click', (e) => {
-              const id = e.target.getAttribute('data-id');
-              const title = e.target.getAttribute('data-title');
-              const content = e.target.getAttribute('data-content');
+              const target = e.currentTarget;
+              const id = target.getAttribute('data-id');
+              const title = target.getAttribute('data-title');
+              const content = target.getAttribute('data-content');
               enableEditMode(id, title, content);
             });
           });
 
           document.querySelectorAll('.btn-delete-note').forEach(btn => {
             btn.addEventListener('click', (e) => {
-              const id = e.target.getAttribute('data-id');
+              const target = e.currentTarget;
+              const id = target.getAttribute('data-id');
               openDeleteModal(id);
             });
           });
@@ -831,6 +819,24 @@
         alert('Gagal memproses catatan.');
       }
     });
+
+    // Delete Note API Call (Tanpa confirm() bawaan browser)
+    async function deleteNote(id) {
+      try {
+        const res = await fetch(`/api/notes/${id}`, {
+          method: 'DELETE',
+          headers: { 'x-admin-pin': activePin }
+        });
+        const json = await res.json();
+        if (json.success) {
+          loadNotes();
+        } else {
+          alert('Gagal menghapus: ' + json.error);
+        }
+      } catch (err) {
+        alert('Eror koneksi saat menghapus.');
+      }
+    }
 
     // Prosedur Edit (Single Page Application Workflow)
     function enableEditMode(id, title, content) {
