@@ -4,3 +4,4 @@ node_modules/
 .ds_store
 *.log
 trivy-report.json
+LAPORAN_TEKNIS.md
