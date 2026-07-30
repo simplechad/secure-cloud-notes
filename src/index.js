@@ -8,8 +8,31 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 
-// Default Admin PIN jika tidak diset di env
+// Kredensial Keamanan
 const ADMIN_PIN = process.env.ADMIN_PIN || '12345';
+
+// Sanitasi URL Supabase: Bersihkan trailing slash dan redundansi /rest/v1 jika tidak sengaja tersalin
+let rawSupabaseUrl = (process.env.SUPABASE_URL || '').trim();
+if (rawSupabaseUrl.endsWith('/')) {
+  rawSupabaseUrl = rawSupabaseUrl.slice(0, -1);
+}
+if (rawSupabaseUrl.endsWith('/rest/v1')) {
+  rawSupabaseUrl = rawSupabaseUrl.slice(0, -8);
+}
+if (rawSupabaseUrl.endsWith('/')) {
+  rawSupabaseUrl = rawSupabaseUrl.slice(0, -1);
+}
+
+const SUPABASE_URL = rawSupabaseUrl;
+const SUPABASE_KEY = (process.env.SUPABASE_KEY || '').trim();
+
+const isSupabaseConfigured = SUPABASE_URL && SUPABASE_KEY;
+
+if (isSupabaseConfigured) {
+  console.log(`Database Cloud terdeteksi: Menggunakan Supabase (${SUPABASE_URL})`);
+} else {
+  console.log('Database Cloud tidak terdeteksi: Fallback menggunakan In-Memory database.');
+}
 
 // 1. KEAMANAN: HTTP Security Headers via Helmet
 app.use(
@@ -40,7 +63,7 @@ app.use(express.json({ limit: '10kb' }));
 // 2. KEAMANAN: Rate Limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100, // Menaikkan limit sedikit untuk mendukung operasi CRUD & Status
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -66,12 +89,25 @@ const authenticatePIN = (req, res, next) => {
   next();
 };
 
-// In-Memory Storage dengan ID Auto-Increment
-let notes = [
-  { id: 1, title: 'Tips Keamanan Kontainer', content: 'Selalu gunakan user non-root (USER node) di dalam Dockerfile Anda untuk menghindari privilege escalation.', createdAt: new Date() },
-  { id: 2, title: 'HTTP Headers', content: 'HelmetJS membantu mengamankan Express app dengan menyetel berbagai HTTP headers secara otomatis.', createdAt: new Date() }
+// In-Memory Storage (Fallback jika Supabase belum diset)
+let localNotes = [
+  { id: 1, title: 'Tips Keamanan Kontainer (Local Fallback)', content: 'Selalu gunakan user non-root (USER node) di dalam Dockerfile Anda untuk menghindari privilege escalation.', createdAt: new Date() },
+  { id: 2, title: 'HTTP Headers (Local Fallback)', content: 'HelmetJS membantu mengamankan Express app dengan menyetel berbagai HTTP headers secara otomatis.', createdAt: new Date() }
 ];
-let nextId = 3;
+let nextLocalId = 3;
+
+// Helper untuk fetch ke Supabase REST API
+const supabaseFetch = async (endpoint, options = {}) => {
+  const url = `${SUPABASE_URL}/rest/v1/${endpoint}`;
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`,
+    'Content-Type': 'application/json',
+    ...options.headers
+  };
+  
+  return fetch(url, { ...options, headers });
+};
 
 // Endpoint API Info (Public)
 app.get('/api/info', (req, res) => {
@@ -79,6 +115,7 @@ app.get('/api/info', (req, res) => {
     name: 'Secure Cloud Notes API',
     status: 'Active',
     environment: NODE_ENV,
+    databaseType: isSupabaseConfigured ? 'Supabase PostgreSQL (Cloud Secured)' : 'In-Memory (Fallback)',
     securityFeatures: [
       'HTTPS/TLS Enabled',
       'Helmet HTTP Security Headers',
@@ -116,20 +153,33 @@ app.get('/health', (req, res) => {
 });
 
 // ==========================================
-// OPERASI CRUD AMAN (PROTECTED BY PIN)
+// OPERASI CRUD SECURE DATABASE
 // ==========================================
 
 // 1. Read All Notes
-app.get('/api/notes', authenticatePIN, (req, res) => {
-  res.json({
-    success: true,
-    count: notes.length,
-    data: notes,
-  });
+app.get('/api/notes', authenticatePIN, async (req, res) => {
+  if (!isSupabaseConfigured) {
+    return res.json({ success: true, count: localNotes.length, data: localNotes });
+  }
+
+  try {
+    const response = await supabaseFetch('notes?select=*&order=id.asc', { method: 'GET' });
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error(`Supabase Fetch Error [Status ${response.status}]:`, errBody);
+      throw new Error(`HTTP Status ${response.status}`);
+    }
+    
+    const data = await response.json();
+    res.json({ success: true, count: data.length, data });
+  } catch (error) {
+    console.error('Database Error:', error.message);
+    res.status(500).json({ success: false, error: 'Gagal memuat catatan dari database cloud.' });
+  }
 });
 
 // 2. Create Note
-app.post('/api/notes', authenticatePIN, (req, res) => {
+app.post('/api/notes', authenticatePIN, async (req, res) => {
   const { title, content } = req.body;
 
   if (!title || !content || typeof title !== 'string' || typeof content !== 'string') {
@@ -139,23 +189,42 @@ app.post('/api/notes', authenticatePIN, (req, res) => {
     });
   }
 
-  const newNote = {
-    id: nextId++,
-    title: title.trim().substring(0, 100),
-    content: content.trim().substring(0, 500),
-    createdAt: new Date(),
-  };
+  const cleanTitle = title.trim().substring(0, 100);
+  const cleanContent = content.trim().substring(0, 500);
 
-  notes.push(newNote);
-  res.status(201).json({
-    success: true,
-    message: 'Catatan berhasil disimpan.',
-    data: newNote,
-  });
+  if (!isSupabaseConfigured) {
+    const newNote = { id: nextLocalId++, title: cleanTitle, content: cleanContent, createdAt: new Date() };
+    localNotes.push(newNote);
+    return res.status(201).json({ success: true, message: 'Catatan disimpan (In-Memory).', data: newNote });
+  }
+
+  try {
+    const response = await supabaseFetch('notes', {
+      method: 'POST',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify({ title: cleanTitle, content: cleanContent })
+    });
+    
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error(`Supabase Insert Error [Status ${response.status}]:`, errBody);
+      throw new Error(`HTTP Status ${response.status}`);
+    }
+    const data = await response.json();
+    
+    res.status(201).json({
+      success: true,
+      message: 'Catatan berhasil disimpan ke database cloud.',
+      data: data[0],
+    });
+  } catch (error) {
+    console.error('Database Error:', error.message);
+    res.status(500).json({ success: false, error: 'Gagal menyimpan catatan ke database cloud.' });
+  }
 });
 
 // 3. Update Note (Edit)
-app.put('/api/notes/:id', authenticatePIN, (req, res) => {
+app.put('/api/notes/:id', authenticatePIN, async (req, res) => {
   const noteId = parseInt(req.params.id, 10);
   const { title, content } = req.body;
 
@@ -166,39 +235,76 @@ app.put('/api/notes/:id', authenticatePIN, (req, res) => {
     });
   }
 
-  const index = notes.findIndex(n => n.id === noteId);
-  if (index === -1) {
-    return res.status(404).json({ success: false, error: 'Catatan tidak ditemukan.' });
+  const cleanTitle = title.trim().substring(0, 100);
+  const cleanContent = content.trim().substring(0, 500);
+
+  if (!isSupabaseConfigured) {
+    const index = localNotes.findIndex(n => n.id === noteId);
+    if (index === -1) return res.status(404).json({ success: false, error: 'Catatan tidak ditemukan.' });
+    localNotes[index] = { ...localNotes[index], title: cleanTitle, content: cleanContent, updatedAt: new Date() };
+    return res.json({ success: true, message: 'Catatan diperbarui (In-Memory).', data: localNotes[index] });
   }
 
-  notes[index] = {
-    ...notes[index],
-    title: title.trim().substring(0, 100),
-    content: content.trim().substring(0, 500),
-    updatedAt: new Date()
-  };
-
-  res.json({
-    success: true,
-    message: 'Catatan berhasil diperbarui.',
-    data: notes[index],
-  });
+  try {
+    const response = await supabaseFetch(`notes?id=eq.${noteId}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify({ title: cleanTitle, content: cleanContent })
+    });
+    
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error(`Supabase Patch Error [Status ${response.status}]:`, errBody);
+      throw new Error(`HTTP Status ${response.status}`);
+    }
+    const data = await response.json();
+    
+    if (data.length === 0) {
+      return res.status(404).json({ success: false, error: 'Catatan tidak ditemukan.' });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Catatan berhasil diperbarui di database cloud.',
+      data: data[0],
+    });
+  } catch (error) {
+    console.error('Database Error:', error.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui catatan di database cloud.' });
+  }
 });
 
 // 4. Delete Note
-app.delete('/api/notes/:id', authenticatePIN, (req, res) => {
+app.delete('/api/notes/:id', authenticatePIN, async (req, res) => {
   const noteId = parseInt(req.params.id, 10);
-  const index = notes.findIndex(n => n.id === noteId);
 
-  if (index === -1) {
-    return res.status(404).json({ success: false, error: 'Catatan tidak ditemukan.' });
+  if (!isSupabaseConfigured) {
+    const index = localNotes.findIndex(n => n.id === noteId);
+    if (index === -1) return res.status(404).json({ success: false, error: 'Catatan tidak ditemukan.' });
+    localNotes.splice(index, 1);
+    return res.json({ success: true, message: 'Catatan dihapus (In-Memory).' });
   }
 
-  notes.splice(index, 1);
-  res.json({
-    success: true,
-    message: 'Catatan berhasil dihapus.',
-  });
+  try {
+    const response = await supabaseFetch(`notes?id=eq.${noteId}`, {
+      method: 'DELETE',
+      headers: { 'Prefer': 'return=representation' }
+    });
+    
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error(`Supabase Delete Error [Status ${response.status}]:`, errBody);
+      throw new Error(`HTTP Status ${response.status}`);
+    }
+    
+    res.json({
+      success: true,
+      message: 'Catatan berhasil dihapus dari database cloud.',
+    });
+  } catch (error) {
+    console.error('Database Error:', error.message);
+    res.status(500).json({ success: false, error: 'Gagal menghapus catatan dari database cloud.' });
+  }
 });
 
 // 404 Handler

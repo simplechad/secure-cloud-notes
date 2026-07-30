@@ -200,7 +200,7 @@
     }
 
     #confirm-modal {
-      z-index: 1001; /* Show confirmation overlay above auth card if needed */
+      z-index: 1001;
       background: rgba(6, 9, 15, 0.85);
       backdrop-filter: blur(15px);
     }
@@ -407,9 +407,13 @@
       text-align: center;
       padding: 2rem;
       color: var(--text-muted);
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       margin-top: auto;
       background-color: rgba(7, 11, 19, 0.5);
+    }
+
+    footer a:hover {
+      text-decoration: underline !important;
     }
   </style>
 </head>
@@ -563,7 +567,13 @@
   </main>
 
   <footer>
-    <p>Tugas Besar Project Case Study - Mata Kuliah Keamanan Informasi © 2026</p>
+    <p style="margin-bottom: 0.5rem; font-weight: 500;">
+      Developed by <a href="https://github.com/simplechad" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: 700;">simplechad</a> 
+      | NIM: [Masukkan NIM Anda]
+    </p>
+    <p style="font-size: 0.8rem; color: var(--text-muted);">
+      Keamanan Informasi Portfolio Project | Built with Node.js, Express, Docker Hardened Container, and Supabase PostgreSQL.
+    </p>
   </footer>
 
   <script>
@@ -624,6 +634,7 @@
       document.getElementById('confirm-modal').style.display = 'flex';
     }
 
+    // Close Modal
     function closeExitModal() {
       document.getElementById('confirm-modal').style.display = 'none';
     }
@@ -810,6 +821,7 @@
       formContainer.scrollIntoView({ behavior: 'smooth' });
     }
 
+    // Cancel Edit Mode
     function cancelEditMode() {
       document.getElementById('editing-note-id').value = '';
       document.getElementById('note-title').value = '';
