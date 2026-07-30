@@ -8,8 +8,8 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 
-// Kredensial Keamanan
-const ADMIN_PIN = process.env.ADMIN_PIN || '12345';
+// Kredensial Keamanan PIN Admin (Default PIN: 123456)
+const ADMIN_PIN = process.env.ADMIN_PIN || '123456';
 
 // Sanitasi URL Supabase: Bersihkan trailing slash dan redundansi /rest/v1 jika tidak sengaja tersalin
 let rawSupabaseUrl = (process.env.SUPABASE_URL || '').trim();
