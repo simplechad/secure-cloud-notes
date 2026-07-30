@@ -1,0 +1,25 @@
+{
+  "name": "secure-container-app",
+  "version": "1.0.0",
+  "description": "Aplikasi Secure Cloud Notes & Health Check API berbasis Node.js untuk Case Study Keamanan Informasi",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": [
+    "security",
+    "docker",
+    "express",
+    "flyio",
+    "cloud"
+  ],
+  "author": "Mahasiswa Keamanan Informasi",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "helmet": "^7.1.0"
+  }
+}
