@@ -9,7 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies (only production)
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # ==========================================
 # STAGE 2: Production Hardened Image (Runner Stage)
@@ -28,10 +28,9 @@ COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node ./src ./src
 
 # Keamanan 3: Gunakan user non-root 'node' (bawaan dari image Node Alpine)
-# Jangan pernah jalankan kontainer cloud sebagai ROOT!
 USER node
 
-# Keamanan 4: Expose Port (Documentary)
+# Keamanan 4: Expose Port
 EXPOSE 8080
 
 # Keamanan 5: Healthcheck Kontainer Otomatis
